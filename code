@@ -98,5 +98,5 @@ int main(int argc, char const *argv[])
 
 
 //Command to compile the code
-
-//g++ -I./cpp-httplib-master/ -I./json-develop/include -o shortenurl shortenurl.cpp -lws2_32
+//g++ -Icpp-httplib -Ijson/include -o shortenurl shortenurl.cpp -lws2_32
+//.\shortenurl
