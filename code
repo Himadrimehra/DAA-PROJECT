@@ -1,9 +1,14 @@
 #include <iostream>
 #include <vector>
+#include <string>
 #include <algorithm>
-#include <unordered_map>
+
+
+#include <optional>
 #include <winsock2.h>
 #include <windows.h>
+
+
 #include "httplib.h"
 #include "nlohmann/json.hpp"
 
@@ -11,92 +16,123 @@ using namespace std;
 using namespace httplib;
 using json = nlohmann::json;
 
+const int TABLE_SIZE = 10007;// Prime size for better hashing
+const string BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
+// Structure for hash table entry
 
-unordered_map <string, string> shortToLong;
+struct Entry {
+    string longUrl;
+    string shortUrl;
+    bool isOccupied = false;
+};
 
-unsigned int generateHash(string longUrl){
-    unsigned int hashValue = 0;
+vector<Entry> hashTable(TABLE_SIZE);
 
-    for(int i=0; i<longUrl.size(); i++){
-        hashValue = (hashValue<<5) + (hashValue^longUrl[i]);
+// Hash function for string (polynomial rolling hash)
+
+unsigned int customHash(const string& url) {
+    unsigned long long hash = 0;
+    unsigned long long base = 31;
+    unsigned long long mod = TABLE_SIZE;
+
+    for (char c : url) {
+        hash = (hash * base + c) % mod;
     }
 
-    return hashValue;
+    return static_cast<unsigned int>(hash);
 }
 
+// Convert index to Base62 string
 
-string getShortUrlFromHash(unsigned int hashValue){
-    char base62Arr[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-    const int base = 62;
-
-    string shortUrl = "";
-    
-    do{
-        unsigned int index = (hashValue%base);
-        char c = base62Arr[index];
-
-        shortUrl.push_back(c);
-
-        hashValue /= base;
-    } while(hashValue > 0);
-
-    reverse(shortUrl.begin(), shortUrl.end());
-
-    return shortUrl;
+string encodeBase62(unsigned int num) {
+    string encoded;
+    do {
+        encoded += BASE62[num % 62];
+        num /= 62;
+    } while (num > 0);
+    reverse(encoded.begin(), encoded.end());
+    return encoded;
 }
 
+// Insert long URL and return short URL using open addressing
 
-string shortenUrl(string longUrl){
-    //Get the Hash
-    unsigned int hashValue = generateHash(longUrl);
-    cout << "The hash value is " << hashValue << endl;
+string shortenUrl(const string& longUrl) {
+    unsigned int hashIndex = customHash(longUrl);
 
-    string shortUrl = getShortUrlFromHash(hashValue);
-    cout << "The short URL is " << shortUrl << endl;
+    for (int i = 0; i < TABLE_SIZE; i++) {
+        int idx = (hashIndex + i) % TABLE_SIZE;
 
-    return shortUrl;
+        if (hashTable[idx].isOccupied && hashTable[idx].longUrl == longUrl) {
+            return hashTable[idx].shortUrl; // already exists
+        }
+
+        if (!hashTable[idx].isOccupied) {
+            string shortUrl = encodeBase62(idx);
+            hashTable[idx] = {longUrl, shortUrl, true};
+            return shortUrl;
+        }
+    }
+
+    return "ERROR_TABLE_FULL";
 }
 
-int main(int argc, char const *argv[])
-{
+// Retrieve original URL from short URL
+
+
+optional<string> getLongUrl(const string& shortUrl) {
+    // Decode Base62 shortUrl to index
+    unsigned int index = 0;
+    for (char c : shortUrl) {
+        index = index * 62 + BASE62.find(c);
+    }
+
+    if (index < TABLE_SIZE && hashTable[index].isOccupied && hashTable[index].shortUrl == shortUrl) {
+        return hashTable[index].longUrl;
+    }
+
+    return nullopt;
+}
+
+int main() {
     Server server;
 
-    server.Post("/shorten", [](const Request& req, Response& res){
+    server.Post("/shorten", [](const Request& req, Response& res) {
+        if (!req.has_param("longUrl")) {
+            res.status = 400;
+            res.set_content("{\"error\": \"Missing longUrl\"}", "application/json");
+            return;
+        }
+
         string longUrl = req.get_param_value("longUrl");
         string shortUrl = shortenUrl(longUrl);
 
-        shortToLong[shortUrl] = longUrl;
-
-        res.set_content(shortUrl, "application/json");
+        json response;
+        response["shortUrl"] = shortUrl;
+        res.set_content(response.dump(), "application/json");
     });
 
-    server.Get(R"(/(\w+))", [&](const Request& req, Response& res){
+    server.Get(R"(/(\w+))", [](const Request& req, Response& res) {
         string shortUrl = req.matches[1];
-        string response;
+        auto result = getLongUrl(shortUrl);
 
-        json jsonResponse;
-
-        if(shortToLong.find(shortUrl) != shortToLong.end()){
-            jsonResponse["url"] = shortToLong[shortUrl];
-            jsonResponse["statusCode"] = 302;
-        }
-        else{
-            jsonResponse["url"] = "";
-            jsonResponse["statusCode"]= 404;
+        json response;
+        if (result) {
+            response["url"] = *result;
+            response["statusCode"] = 302;
+        } else {
+            response["url"] = "";
+            response["statusCode"] = 404;
         }
 
-        res.set_content(jsonResponse.dump() , "application/json");
+        res.set_content(response.dump(), "application/json");
     });
 
-    cout << "Server listening on port 8080";
-
+    cout << "Server is running at http://localhost:8080" << endl;
     server.listen("localhost", 8080);
-
     return 0;
 }
 
-
-//Command to compile the code
 //g++ -Icpp-httplib -Ijson/include -o shortenurl shortenurl.cpp -lws2_32
-//.\shortenurl
+
+//.\shortenurl.exe   
