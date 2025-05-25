@@ -1,69 +1,145 @@
 🔗 URL Shortener in C++
-This is a simple URL Shortener server written in C++, using cpp-httplib for HTTP functionality and nlohmann/json for JSON serialization.
+# cpp-url-shortener
 
-It accepts a long URL and returns a unique shortened version, then allows retrieval of the original URL via the shortened one.
+A lightweight URL shortening service written in C++ using [`cpp-httplib`](https://github.com/yhirose/cpp-httplib) and [`nlohmann/json`](https://github.com/nlohmann/json). This project mimics the basic functionality of services like [bit.ly](https://bit.ly) or [TinyURL](https://tinyurl.com).
 
-🚀 Features
-Convert long URLs to short codes using hashing + Base62
+## 🔗 Features
 
-Store mappings in memory using unordered_map
+- Convert long URLs into short aliases
+- Retrieve the original URL from a shortened version
+- Simple hash-based storage (no external database)
+- RESTful API using HTTP POST and GET
+- Tested using [Postman](https://www.postman.com/)
 
-Exposes RESTful API endpoints:
+---
 
-POST /shorten?longUrl=<URL>: returns a short URL
+## 🛠️ Tech Stack
 
-GET /<shortCode>: redirects (returns original URL in JSON)
+- C++17
+- [cpp-httplib](https://github.com/yhirose/cpp-httplib) - Lightweight HTTP server
+- [nlohmann/json](https://github.com/nlohmann/json) - JSON parsing
+- Windows (WinSock2 required for `cpp-httplib`)
 
-🔧 Requirements
-C++ compiler with C++11 support
+---
 
-Windows OS (uses winsock2.h)
+## 📦 Dependencies
 
-External libraries:
+- C++ compiler (e.g., g++)
+- `cpp-httplib` header-only library
+- `nlohmann/json` header-only library
+- WinSock2 (`-lws2_32` required for Windows)
 
+---
+
+## 🚀 Getting Started
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/your-username/cpp-url-shortener.git
+cd cpp-url-shortener
+2. Compile the Code
+bash
+Copy
+Edit
+g++ -Icpp-httplib -Ijson/include -o shortenurl shortenurl.cpp -lws2_32
+3. Run the Server
+bash
+Copy
+Edit
+./shortenurl
+Server will start at http://localhost:8080
+
+📨 API Endpoints
+POST /shorten
+Description: Shortens a long URL.
+
+Request:
+
+http
+Copy
+Edit
+POST /shorten?longUrl=https://example.com
+Response:
+
+json
+Copy
+Edit
+{
+  "shortUrl": "a1B"
+}
+GET /:shortUrl
+Description: Retrieves the original URL.
+
+Request:
+
+http
+Copy
+Edit
+GET /a1B
+Response (found):
+
+json
+Copy
+Edit
+{
+  "url": "https://example.com",
+  "statusCode": 302
+}
+Response (not found):
+
+json
+Copy
+Edit
+{
+  "url": "",
+  "statusCode": 404
+}
+📁 Project Structure
+pgsql
+Copy
+Edit
+cpp-url-shortener/
+│
+├── shortenurl.cpp       # Main server logic
+├── cpp-httplib/         # Header-only HTTP server
+├── json/                # nlohmann/json library
+└── README.md            # Project documentation
+🧪 Testing
+You can use Postman or cURL to test the API.
+
+Example using curl:
+
+bash
+Copy
+Edit
+curl -X POST "http://localhost:8080/shorten?longUrl=https://openai.com"
+curl http://localhost:8080/a1B
+📌 Notes
+The project uses an in-memory hash table and is not persistent.
+
+Base62 encoding ensures short and human-readable aliases.
+
+Hash collisions are resolved using linear probing (open addressing).
+
+📃 License
+This project is licensed under the MIT License. See LICENSE file for details.
+
+🙌 Acknowledgements
 cpp-httplib
 
 nlohmann/json
 
-🛠️ Installation & Compilation
-Clone this repository:
+✨ Future Improvements
+Add persistent storage (e.g., file or database)
 
-git clone https://github.com/your-username/url-shortener-cpp.git
-cd url-shortener-cpp
-Make sure you have the required libraries:
+Implement URL validation
 
-Place httplib.h from cpp-httplib in the project folder
+Add expiration support for short URLs
 
-Place json.hpp from nlohmann/json in the include folder
+Add a simple web UI
 
-Compile:
+yaml
+Copy
+Edit
 
-g++ -I./cpp-httplib-master/ -I./json-develop/include -o shortenurl shortenurl.cpp -lws2_32
-▶️ Usage
-Run the server:
-
-./shortenurl
-Example API Calls:
-
-Shorten URL:
-
-POST http://localhost:8080/shorten?longUrl=https://example.com
-Response: "aB3kZ1" (short code)
-Retrieve URL:
-
-GET http://localhost:8080/aB3kZ1
-Response: {
-  "url": "https://example.com",
-  "statusCode": 302
-}
-📁 Project Structure
-
-shortenurl.cpp        # Main source code
-cpp-httplib-master/   # Directory containing httplib.h
-json-develop/include/ # Directory containing json.hpp
-📌 Notes
-Currently, the short URL data is stored in memory only — restarting the server resets mappings.
-
-No collision detection is implemented; hash collisions may overwrite URLs.
-
-This implementation is intended for learning or demonstration purposes.
