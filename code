@@ -1,13 +1,13 @@
 #include <iostream>
 #include <vector>
 #include <string>
+
+
 #include <algorithm>
-
-
 #include <optional>
+#include <stack>
 #include <winsock2.h>
 #include <windows.h>
-
 
 #include "httplib.h"
 #include "nlohmann/json.hpp"
@@ -16,8 +16,10 @@ using namespace std;
 using namespace httplib;
 using json = nlohmann::json;
 
-const int TABLE_SIZE = 10007;// Prime size for better hashing
+
+const int TABLE_SIZE = 10007; // Prime size for better hashing
 const string BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
 
 // Structure for hash table entry
 
@@ -28,9 +30,10 @@ struct Entry {
 };
 
 vector<Entry> hashTable(TABLE_SIZE);
+stack<int> urlStack; // Stack for undo functionality
+
 
 // Hash function for string (polynomial rolling hash)
-
 unsigned int customHash(const string& url) {
     unsigned long long hash = 0;
     unsigned long long base = 31;
@@ -43,8 +46,8 @@ unsigned int customHash(const string& url) {
     return static_cast<unsigned int>(hash);
 }
 
-// Convert index to Base62 string
 
+// Convert index to Base62 string
 string encodeBase62(unsigned int num) {
     string encoded;
     do {
@@ -55,7 +58,9 @@ string encodeBase62(unsigned int num) {
     return encoded;
 }
 
+
 // Insert long URL and return short URL using open addressing
+
 
 string shortenUrl(const string& longUrl) {
     unsigned int hashIndex = customHash(longUrl);
@@ -70,6 +75,7 @@ string shortenUrl(const string& longUrl) {
         if (!hashTable[idx].isOccupied) {
             string shortUrl = encodeBase62(idx);
             hashTable[idx] = {longUrl, shortUrl, true};
+            urlStack.push(idx); // Push to stack for undo
             return shortUrl;
         }
     }
@@ -78,10 +84,7 @@ string shortenUrl(const string& longUrl) {
 }
 
 // Retrieve original URL from short URL
-
-
 optional<string> getLongUrl(const string& shortUrl) {
-    // Decode Base62 shortUrl to index
     unsigned int index = 0;
     for (char c : shortUrl) {
         index = index * 62 + BASE62.find(c);
@@ -94,9 +97,11 @@ optional<string> getLongUrl(const string& shortUrl) {
     return nullopt;
 }
 
+
 int main() {
     Server server;
 
+    // POST /shorten?longUrl=<url>
     server.Post("/shorten", [](const Request& req, Response& res) {
         if (!req.has_param("longUrl")) {
             res.status = 400;
@@ -112,6 +117,8 @@ int main() {
         res.set_content(response.dump(), "application/json");
     });
 
+
+    // GET /<shortUrl>
     server.Get(R"(/(\w+))", [](const Request& req, Response& res) {
         string shortUrl = req.matches[1];
         auto result = getLongUrl(shortUrl);
@@ -128,6 +135,32 @@ int main() {
         res.set_content(response.dump(), "application/json");
     });
 
+
+    // POST /undo
+    server.Post("/undo", [](const Request& req, Response& res) {
+        json response;
+
+        if (!urlStack.empty()) {
+            int lastIndex = urlStack.top();
+            urlStack.pop();
+
+            string removedUrl = hashTable[lastIndex].shortUrl;
+
+            // Clear the entry
+            hashTable[lastIndex] = {"", "", false};
+
+            response["status"] = "success";
+            response["message"] = "Last shortened URL has been undone.";
+            response["removedShortUrl"] = removedUrl;
+        } else {
+            response["status"] = "error";
+            response["message"] = "No URL to undo.";
+        }
+
+        res.set_content(response.dump(), "application/json");
+    });
+
+
     cout << "Server is running at http://localhost:8080" << endl;
     server.listen("localhost", 8080);
     return 0;
@@ -135,4 +168,4 @@ int main() {
 
 //g++ -Icpp-httplib -Ijson/include -o shortenurl shortenurl.cpp -lws2_32
 
-//.\shortenurl.exe   
+//.\shortenurl.exe 
